@@ -66,7 +66,7 @@ Firebase hace de "servidor": guarda salas, pinchos, fotos y votos y los sincroni
 3. En GitHub: **Settings → Pages → Build and deployment → Source: _Deploy from a branch_ → `main` / `(root)` → Save**.
 4. En un par de minutos estará en `https://TU_USUARIO.github.io/pinchos/`. Esa es la web que compartes; cada sala genera su propio enlace (`…/pinchos/?sala=ABCDE`).
 
-Opcional: para que la vista previa de WhatsApp muestre la imagen, cambia en `index.html` la línea `og:image` por la URL absoluta, p. ej. `https://TU_USUARIO.github.io/pinchos/img/og.jpg`.
+La vista previa al compartir por WhatsApp (imagen `img/og-invitacion.jpg`, 1200×630) usa URLs absolutas de `https://cosmemj.github.io/pinchos/` en `index.html`: si cambias el nombre del repositorio o el usuario, actualiza esas líneas `og:` y `twitter:`. WhatsApp guarda en caché la vista previa de cada enlace, así que para ver cambios prueba con un enlace de sala nuevo.
 
 ---
 
