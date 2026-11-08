@@ -1,0 +1,6 @@
+# Logs del emulador de Firebase (solo desarrollo)
+*-debug.log
+node_modules/
+.firebase/
+.DS_Store
+Thumbs.db

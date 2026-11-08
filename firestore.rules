@@ -1,0 +1,92 @@
+rules_version = '2';
+
+// Reglas de seguridad de Pincho de Oro.
+// Cópialas en Firebase Console → Firestore Database → Reglas → Publicar.
+//
+// Modelo:
+//   rooms/{code}                 sala (solo el anfitrión/co-anfitriones la modifican)
+//   rooms/{code}/players/{uid}   participantes (cada uno su ficha)
+//   rooms/{code}/dishes/{id}     pinchos (miniatura incluida)
+//   rooms/{code}/photos/{id}     foto grande de cada pincho
+//   rooms/{code}/votes/{uid}     papeletas (solo las ve su autor y el anfitrión)
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function me() { return request.auth.uid; }
+    function roomDoc(roomId) { return /databases/$(database)/documents/rooms/$(roomId); }
+    function roomData(roomId) { return get(roomDoc(roomId)).data; }
+    function isHostOf(r) { return signedIn() && (r.hostUid == me() || me() in r.get('coHosts', [])); }
+    function isHost(roomId) { return isHostOf(roomData(roomId)); }
+    function isPlayer(roomId) {
+      return signedIn() && exists(/databases/$(database)/documents/rooms/$(roomId)/players/$(me()));
+    }
+    function str(v, max) { return v is string && v.size() <= max; }
+
+    match /rooms/{roomId} {
+      allow get: if signedIn();
+      allow list: if false; // nadie puede listar todas las salas
+
+      allow create: if signedIn()
+        && roomId.size() >= 4 && roomId.size() <= 8
+        && request.resource.data.hostUid == me()
+        && request.resource.data.phase == 'lobby'
+        && str(request.resource.data.name, 60);
+
+      // Anfitrión: todo (sin cambiar el dueño). Resto: solo incrementar el contador de pinchos.
+      allow update: if (isHostOf(resource.data)
+          && request.resource.data.hostUid == resource.data.hostUid)
+        || (isPlayer(roomId)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['dishSeq'])
+          && request.resource.data.dishSeq == resource.data.get('dishSeq', 0) + 1);
+
+      allow delete: if signedIn() && resource.data.hostUid == me();
+
+      match /players/{pid} {
+        allow read: if signedIn();
+        allow create: if signedIn() && pid == me()
+          && str(request.resource.data.name, 40)
+          && str(request.resource.data.get('avatar', ''), 16);
+        allow update: if signedIn() && (pid == me() || isHost(roomId))
+          && str(request.resource.data.name, 40);
+        allow delete: if signedIn() && (pid == me() || isHost(roomId));
+      }
+
+      match /dishes/{dishId} {
+        allow read: if signedIn();
+        allow create: if isPlayer(roomId)
+          && request.resource.data.createdBy == me()
+          && str(request.resource.data.name, 80)
+          && (roomData(roomId).phase == 'lobby' || isHost(roomId));
+        allow update: if signedIn()
+          && (resource.data.createdBy == me() || me() in resource.data.get('chefUids', []) || isHost(roomId))
+          && request.resource.data.createdBy == resource.data.createdBy
+          && request.resource.data.num == resource.data.num
+          && str(request.resource.data.name, 80);
+        allow delete: if signedIn() && (resource.data.createdBy == me() || isHost(roomId));
+      }
+
+      match /photos/{dishId} {
+        function dishPath() { return /databases/$(database)/documents/rooms/$(roomId)/dishes/$(dishId); }
+        function canEditDish() {
+          let d = get(dishPath()).data;
+          return d.createdBy == me() || me() in d.get('chefUids', []);
+        }
+        allow read: if signedIn();
+        allow create, update: if signedIn() && (isHost(roomId) || canEditDish());
+        allow delete: if signedIn() && (isHost(roomId) || !exists(dishPath()) || canEditDish());
+      }
+
+      match /votes/{vid} {
+        allow read: if signedIn() && (vid == me() || isHost(roomId));
+        allow create, update: if signedIn() && vid == me()
+          && isPlayer(roomId)
+          && roomData(roomId).phase == 'voting'
+          && request.resource.data.ranking is list
+          && request.resource.data.ranking.size() <= 100;
+        allow delete: if signedIn() && (vid == me() || isHost(roomId));
+      }
+    }
+  }
+}

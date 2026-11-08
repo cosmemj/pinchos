@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#07060f">
+  <title>Pincho de Oro · Concurso de pinchos</title>
+  <meta name="description" content="Crea la sala, haz fotos a cada pincho, votad desde el móvil y descubrid al ganador con una gala de neón.">
+
+  <!-- Vista previa al compartir por WhatsApp (puedes cambiar og:image por la URL absoluta de tu GitHub Pages) -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="🏆 Pincho de Oro — ¡a votar!">
+  <meta property="og:description" content="Entra en la sala, haz la foto de tu pincho y vota a tus favoritos.">
+  <meta property="og:image" content="img/og.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="img/icon.svg" type="image/svg+xml">
+  <link rel="icon" href="img/icon-192.png" type="image/png" sizes="192x192">
+  <link rel="apple-touch-icon" href="img/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Pincho de Oro">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+  <link rel="preconnect" href="https://firestore.googleapis.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=Tilt+Neon&family=Monoton&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/app.css">
+  <link rel="modulepreload" href="js/main.js">
+</head>
+<body>
+  <div class="bg" aria-hidden="true">
+    <div class="bg-blob bg-blob-a"></div>
+    <div class="bg-blob bg-blob-b"></div>
+    <div class="bg-blob bg-blob-c"></div>
+    <div class="bg-grid"></div>
+    <div class="bg-noise"></div>
+  </div>
+
+  <div id="app">
+    <div class="splash">
+      <div class="splash-logo">🍢</div>
+      <div class="splash-text">Calentando la plancha…</div>
+    </div>
+  </div>
+
+  <noscript>
+    <p style="padding:24px;color:#fff;font-family:sans-serif">Necesitas activar JavaScript para usar Pincho de Oro.</p>
+  </noscript>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
