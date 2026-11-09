@@ -1,4 +1,4 @@
-import { html, useState, useEffect, useMemo, useRef } from '../lib.js';
+import { html, useState, useEffect, useLayoutEffect, useMemo, useRef } from '../lib.js';
 import { appState, useStore } from '../store.js';
 import { navigate } from '../router.js';
 import {
@@ -334,8 +334,10 @@ function RoomView({ code, room, players, dishes, me }) {
     }
   }, [room.phase]);
 
-  // Lanzar la gala automáticamente cuando el anfitrión la dispara (sincronizado para todos)
-  useEffect(() => {
+  // Lanzar la gala automáticamente cuando el anfitrión la dispara (sincronizado para todos).
+  // useLayoutEffect: la gala se monta ANTES del primer pintado; con useEffect se veía un instante la página
+  // de resultados (¡el podio con el ganador!) antes de que la gala la tapara.
+  useLayoutEffect(() => {
     if (room.phase !== 'results' || !room.results) return;
     const key = `pdo:seen:${code}:${uid}`;
     const seen = Number(local.get(key, 0)) || 0;

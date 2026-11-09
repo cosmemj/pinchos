@@ -12,7 +12,7 @@ let last = 0;
 let dpr = 1;
 let cw = 0; // tamaño lógico (px CSS) del lienzo
 let ch = 0;
-const sprites = new Map(); // emoji + tamaño -> lienzo pre-renderizado (fillText de emojis en cada frame es caro)
+const sprites = new Map(); // texturas de emoji pre-renderizadas
 
 /**
  * Ajusta el lienzo a su propia caja CSS (fixed + inset 0 = el viewport de la página).
@@ -53,23 +53,43 @@ function wipe() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 }
 
+// Dibujar texto de emoji es muy caro, y reescalar una textura grande para cada partícula también. Cada emoji
+// se dibuja una sola vez y se guarda en tres tamaños ya reducidos; al pintar es casi una copia directa.
+const SPRITE_BASE = 64;
+const SPRITE_SIZES = [16, 24, 36]; // px CSS
+
 function emojiSprite(e, px) {
-  const key = `${e}|${px}|${dpr}`;
+  const size = SPRITE_SIZES.find((v) => v >= px) || SPRITE_SIZES[SPRITE_SIZES.length - 1];
+  const key = `${e}|${size}|${dpr}`;
   let s = sprites.get(key);
-  if (!s) {
-    if (sprites.size > 120) sprites.clear();
-    const side = Math.ceil(px * 1.35 * dpr);
-    s = document.createElement('canvas');
-    s.width = side;
-    s.height = side;
-    const g = s.getContext('2d');
-    g.font = `${px * dpr}px system-ui, "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif`;
+  if (s) return s;
+  if (sprites.size > 90) sprites.clear();
+  let base = sprites.get(e);
+  if (!base) {
+    const side = Math.ceil(SPRITE_BASE * 1.35);
+    base = document.createElement('canvas');
+    base.width = side;
+    base.height = side;
+    const g = base.getContext('2d');
+    g.font = `${SPRITE_BASE}px system-ui, "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif`;
     g.textAlign = 'center';
     g.textBaseline = 'middle';
     g.fillText(e, side / 2, side / 2);
-    sprites.set(key, s);
+    sprites.set(e, base);
   }
+  const side = Math.ceil(size * 1.35 * dpr);
+  s = document.createElement('canvas');
+  s.width = side;
+  s.height = side;
+  s.getContext('2d').drawImage(base, 0, 0, side, side);
+  sprites.set(key, s);
   return s;
+}
+
+/** Prepara las texturas de unos emojis por adelantado (p. ej. mientras carga la gala) para que el primer disparo no dé un tirón. */
+export function warmConfetti(emojis = []) {
+  ensureCanvas();
+  for (const e of emojis) for (const size of SPRITE_SIZES) emojiSprite(e, size);
 }
 
 /**
@@ -134,10 +154,9 @@ function tick(now) {
     ctx.translate(p.x, p.y);
     ctx.rotate(p.rot);
     if (p.shape === 'emoji') {
-      const px = Math.round(p.s * 2.4);
-      const sp = emojiSprite(p.e, px);
-      const side = sp.width / dpr;
-      ctx.drawImage(sp, -side / 2, -side / 2, side, side);
+      const px = p.s * 2.4;
+      const side = px * 1.35;
+      ctx.drawImage(emojiSprite(p.e, px), -side / 2, -side / 2, side, side);
     } else {
       ctx.fillStyle = p.c;
       if (p.shape === 'rect') {

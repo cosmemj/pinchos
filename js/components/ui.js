@@ -323,12 +323,12 @@ export function Empty({ emoji = '🍢', title, text, children }) {
     </div>`;
 }
 
-/** Contenedor de foto con fallback bonito. */
-export function DishImage({ src, num, alt = '', hidden = false, className = '', children }) {
+/** Contenedor de foto con fallback bonito. `eager`: pintar ya (sin carga diferida), para animaciones como la gala. */
+export function DishImage({ src, num, alt = '', hidden = false, className = '', eager = false, children }) {
   const hue = (Number(num) || 1) * 47;
   return html`
     <div class=${cx('dish-img', !src && 'is-empty', hidden && 'is-hidden', className)} style=${{ '--h': hue % 360 }}>
-      ${src && !hidden ? html`<img src=${src} alt=${alt} decoding="async" loading="lazy" draggable="false" />` : null}
+      ${src && !hidden ? html`<img src=${src} alt=${alt} decoding=${eager ? 'sync' : 'async'} loading=${eager ? 'eager' : 'lazy'} draggable="false" />` : null}
       ${!src || hidden
         ? html`<span class="dish-img-ph" aria-hidden="true">${hidden ? '🙈' : '🍢'}</span>`
         : null}

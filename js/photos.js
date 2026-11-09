@@ -58,19 +58,22 @@ export function usePhoto(code, dish) {
   return state;
 }
 
+const keep = new Map(); // src -> Image ya decodificada (se vacía al superar unas pocas decenas)
+
 /** Precarga varias fotos con límite de tiempo. Devuelve Map id -> src. */
 export async function preloadPhotos(code, dishes, timeoutMs = 4000) {
   const out = new Map();
+  if (keep.size > 40) keep.clear();
   const jobs = dishes.map(async (d) => {
     const src = await getPhoto(code, d);
     const final = src || d.thumb || null;
     if (final) {
       out.set(d.id, final);
-      await new Promise((res) => {
-        const img = new Image();
-        img.onload = img.onerror = res;
-        img.src = final;
-      });
+      // decode(): la foto queda ya decodificada, así no aparece un instante en blanco al mostrarse.
+      const img = new Image();
+      img.src = final;
+      await (img.decode ? img.decode().catch(() => {}) : new Promise((res) => { img.onload = img.onerror = res; }));
+      keep.set(final, img); // mantener la referencia evita que el navegador descarte la decodificación
     }
   });
   await Promise.race([Promise.all(jobs), new Promise((r) => setTimeout(r, timeoutMs))]);

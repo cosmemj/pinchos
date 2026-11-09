@@ -1,7 +1,7 @@
 // La GALA: revelación animada del Top 5, del último al primero.
-import { html, useState, useEffect, useMemo, useCallback, useRef } from '../lib.js';
+import { html, useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef } from '../lib.js';
 import { cx, haptic, joinNames, reducedMotion } from '../util.js';
-import { sound, cannons, fireworks, burst, clearConfetti, mountConfetti } from '../fx.js';
+import { sound, cannons, fireworks, burst, clearConfetti, mountConfetti, warmConfetti } from '../fx.js';
 import { revealGroups } from '../scoring.js';
 import { preloadPhotos } from '../photos.js';
 import { Portal, CountUp, Spinner, DishImage } from './ui.js';
@@ -9,6 +9,7 @@ import { Portal, CountUp, Spinner, DishImage } from './ui.js';
 const T = reducedMotion()
   ? { intro: 1600, pos: 2600, suspense: 1800, winner: 3200 }
   : { intro: 3000, pos: 4300, suspense: 3600, winner: 6000 };
+const WINNER_EMOJIS = ['🏆', '🍢', '⭐', '👑', '🎉'];
 const LEAVE_MS = reducedMotion() ? 0 : 400; // = retardo + duración de .reveal.is-leaving en el CSS
 
 /** Para un pase de la gala: cancela la espera en curso, los temporizadores, el redoble y los fuegos. */
@@ -29,7 +30,7 @@ function SoundToggle() {
 function RevealCard({ entry, src, delay = 0, big = false }) {
   return html`
     <div class=${cx('reveal-card', big && 'is-big')} style=${{ '--d': `${delay}ms` }}>
-      <div class="reveal-photo"><${DishImage} src=${src} num=${entry.num} alt=${entry.name} /></div>
+      <div class="reveal-photo"><${DishImage} src=${src} num=${entry.num} alt=${entry.name} eager /></div>
       <div class="reveal-name">${entry.name}</div>
       ${entry.chefName ? html`<div class="reveal-chef">${big ? 'de ' : ''}${entry.chefName}</div>` : null}
       <div class="reveal-points"><${CountUp} value=${entry.points} delay=${delay + 700} duration=${1200} /> <small>pts</small></div>
@@ -62,6 +63,8 @@ export function Reveal({ ctx, onClose, onLeave }) {
     exit.current.on = true;
     stopRun(ctl.current);
     cb.current.onLeave?.();
+    // La página de debajo vuelve a pintarse; el fundido arranca despacio y le da tiempo.
+    document.documentElement.classList.add('reveal-leaving');
     setLeaving(true);
     exit.current.timer = setTimeout(() => cb.current.onClose?.(), LEAVE_MS);
   }, []);
@@ -82,6 +85,7 @@ export function Reveal({ ctx, onClose, onLeave }) {
     (async () => {
       try {
         setStage({ name: 'loading' });
+        warmConfetti(WINNER_EMOJIS); // texturas listas antes del momento cumbre
         const entries = groups.flatMap((g) => g.entries);
         const map = await preloadPhotos(code, entries.map((e) => dishMap.get(e.id) || { id: e.id }), 4500);
         // Aunque se haya pulsado "Saltar" mientras cargaba, el ganador debe salir con su foto.
@@ -116,7 +120,7 @@ export function Reveal({ ctx, onClose, onLeave }) {
         sound.play('crash');
         sound.play('fanfare');
         haptic([80, 40, 160]);
-        cannons({ emojis: ['🏆', '🍢', '⭐', '👑', '🎉'], count: 75 });
+        cannons({ emojis: WINNER_EMOJIS, count: 75 });
         c.stops.push(fireworks(T.winner - 1800));
         later(1600, () => cannons({ count: 36 }));
         await wait(T.winner);
@@ -129,9 +133,16 @@ export function Reveal({ ctx, onClose, onLeave }) {
     return () => stopRun(c);
   }, [runId]);
 
-  useEffect(() => {
+  // Antes del primer pintado: mientras dura la gala, la página de debajo no se pinta (ver CSS). Así es
+  // imposible que se vea el podio por detrás, y el móvil no gasta en animar dos pantallas a la vez.
+  useLayoutEffect(() => {
     const root = document.documentElement;
+    root.classList.remove('reveal-leaving');
     root.classList.add('has-reveal');
+    return () => root.classList.remove('has-reveal', 'reveal-leaving');
+  }, []);
+
+  useEffect(() => {
     if (rootRef.current) mountConfetti(rootRef.current);
 
     // Mantener la pantalla encendida durante la gala (si el navegador lo permite). El navegador suelta el
@@ -161,7 +172,6 @@ export function Reveal({ ctx, onClose, onLeave }) {
       clearTimeout(exit.current.timer);
       removeEventListener('keydown', onKey);
       document.removeEventListener('visibilitychange', askLock);
-      root.classList.remove('has-reveal');
       clearConfetti();
       mountConfetti(document.body);
       lock?.release().catch(() => {});
@@ -176,7 +186,7 @@ export function Reveal({ ctx, onClose, onLeave }) {
     if (groups.length && ctl.current.celebrated !== true) {
       ctl.current.celebrated = true;
       sound.play('fanfare');
-      cannons({ count: 60, emojis: ['🏆', '🍢', '⭐'] });
+      cannons({ count: 60, emojis: WINNER_EMOJIS });
     }
   };
   const replay = (e) => {
@@ -271,7 +281,7 @@ export function Reveal({ ctx, onClose, onLeave }) {
             ${board.map((g) => g.entries.map((e) => html`
               <div class="board-row" key=${e.id}>
                 <span class="board-rank">${g.rank}º</span>
-                <${DishImage} src=${photos.get(e.id)} num=${e.num} className="board-thumb" />
+                <${DishImage} src=${dishMap.get(e.id)?.thumb || photos.get(e.id)} num=${e.num} className="board-thumb" eager />
                 <span class="board-name">${e.name}${e.chefName ? html` <small>· ${e.chefName}</small>` : null}</span>
                 <span class="board-pts">${e.points}</span>
               </div>`))}
