@@ -76,6 +76,8 @@ async function boot() {
     const backend = await createBackend();
     const uid = await backend.init();
     appState.patch({ status: 'ready', backend, uid });
+    // Si la sesión de Firebase cambia (otra pestaña con el mismo enlace, sesión renovada…), la app la sigue.
+    backend.onUserChange?.((next) => appState.patch({ uid: next }));
   } catch (e) {
     console.error(e);
     appState.patch({ status: 'error', error: e });

@@ -67,7 +67,7 @@ function VotingFlow({ ctx, hostActions }) {
     return () => {
       alive = false;
     };
-  }, [code]);
+  }, [code, me.id]);
 
   // Si el anfitrión borra los votos, volvemos a la papeleta.
   useEffect(() => {

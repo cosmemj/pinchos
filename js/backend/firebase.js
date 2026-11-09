@@ -11,7 +11,7 @@ export async function createFirebaseBackend(config, { useEmulator = false } = {}
     import(`${SDK}/firebase-firestore.js`),
   ]);
   const { initializeApp } = appMod;
-  const { getAuth, signInAnonymously, connectAuthEmulator } = authMod;
+  const { getAuth, signInAnonymously, connectAuthEmulator, onAuthStateChanged } = authMod;
   const {
     initializeFirestore, connectFirestoreEmulator, doc, collection, getDoc, getDocs, setDoc, updateDoc,
     deleteDoc, onSnapshot, serverTimestamp, increment, runTransaction, writeBatch,
@@ -25,7 +25,49 @@ export async function createFirebaseBackend(config, { useEmulator = false } = {}
     connectFirestoreEmulator(db, '127.0.0.1', 8080);
   }
 
+  // ---------------- sesión ----------------
+  // Si el enlace se abre en dos pestañas a la vez (p. ej. al tocarlo dos veces en WhatsApp mientras carga),
+  // cada pestaña creaba su propio usuario anónimo y Firebase acababa dejando el último en todas. La otra
+  // pestaña seguía usando su uid antiguo y Firestore rechazaba todo ("No tienes permiso para hacer eso").
+  // Ahora solo una pestaña inicia sesión (Web Locks), las demás reutilizan esa sesión y, si la sesión cambia
+  // después por lo que sea, la app sigue siempre al usuario real.
   let uid = null;
+  const me = () => auth.currentUser?.uid || uid;
+  const userListeners = new Set();
+
+  function waitForUser(ms) {
+    return new Promise((resolve) => {
+      let done = false;
+      let off = null;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        off?.();
+        resolve();
+      };
+      const timer = setTimeout(finish, ms);
+      off = onAuthStateChanged(auth, (u) => u && finish());
+      if (done) off();
+    });
+  }
+
+  async function ensureSignedIn() {
+    if (auth.currentUser) return;
+    const signIn = async (otherTabFirst) => {
+      // Otra pestaña acaba de iniciar sesión: Firebase nos pasa su sesión en menos de un segundo.
+      if (otherTabFirst && !auth.currentUser) await waitForUser(2500);
+      if (!auth.currentUser) await signInAnonymously(auth);
+    };
+    const locks = typeof navigator !== 'undefined' ? navigator.locks : null;
+    if (!locks?.request) return signIn(false);
+    const done = await locks.request('pdo:auth', { ifAvailable: true }, async (lock) => {
+      if (!lock) return false;
+      await signIn(false);
+      return true;
+    });
+    if (!done) await locks.request('pdo:auth', () => signIn(true));
+  }
 
   const roomRef = (code) => doc(db, 'rooms', code);
   const subRef = (code, sub, id) => doc(db, 'rooms', code, sub, id);
@@ -52,16 +94,34 @@ export async function createFirebaseBackend(config, { useEmulator = false } = {}
     kind: 'firebase',
     projectId: config.projectId,
     get uid() {
-      return uid;
+      return me();
     },
     serverTime: () => serverTimestamp(),
     inc: (n) => increment(n),
 
     async init() {
       await auth.authStateReady();
-      if (!auth.currentUser) await signInAnonymously(auth);
+      await ensureSignedIn();
       uid = auth.currentUser.uid;
+      let healing = false;
+      onAuthStateChanged(auth, (u) => {
+        if (u) {
+          if (u.uid === uid) return;
+          uid = u.uid;
+          userListeners.forEach((cb) => cb(uid));
+        } else if (!healing) {
+          // Sesión perdida (caducada, borrada…): abrimos otra para que la app no se quede bloqueada.
+          healing = true;
+          ensureSignedIn().catch((e) => console.error(e)).finally(() => { healing = false; });
+        }
+      });
       return uid;
+    },
+
+    /** Avisa cuando cambia el usuario de esta pestaña (p. ej. al sincronizarse con otra pestaña). */
+    onUserChange(cb) {
+      userListeners.add(cb);
+      return () => userListeners.delete(cb);
     },
 
     // ---------------- salas ----------------
@@ -71,6 +131,7 @@ export async function createFirebaseBackend(config, { useEmulator = false } = {}
     },
 
     async createRoom({ name, settings, player }) {
+      const uid = me();
       for (let i = 0; i < 8; i++) {
         const code = randomCode();
         const ref = roomRef(code);
@@ -114,6 +175,7 @@ export async function createFirebaseBackend(config, { useEmulator = false } = {}
     },
 
     async deleteRoom(code) {
+      const uid = me();
       for (const sub of ['votes', 'photos', 'dishes']) await deleteAll(code, sub);
       const players = await getDocs(subCol(code, 'players'));
       const others = players.docs.filter((d) => d.id !== uid);
@@ -132,7 +194,7 @@ export async function createFirebaseBackend(config, { useEmulator = false } = {}
     },
 
     joinRoom(code, { name, avatar }) {
-      return setDoc(subRef(code, 'players', uid), { name, avatar, joinedAt: serverTimestamp() }, { merge: true });
+      return setDoc(subRef(code, 'players', me()), { name, avatar, joinedAt: serverTimestamp() }, { merge: true });
     },
 
     updatePlayer(code, pid, patch) {
@@ -157,6 +219,7 @@ export async function createFirebaseBackend(config, { useEmulator = false } = {}
     },
 
     async addDish(code, { name, desc = '', chefName = '', chefUids = [], chefOther = '', photo = null }) {
+      const uid = me();
       const dref = doc(subCol(code, 'dishes'));
       const v = photo ? Date.now() : 0;
       await runTransaction(db, async (tx) => {
@@ -186,7 +249,7 @@ export async function createFirebaseBackend(config, { useEmulator = false } = {}
       const data = { ...patch };
       if (photo) {
         const v = Date.now();
-        await setDoc(subRef(code, 'photos', id), { data: photo.full, createdBy: uid, v });
+        await setDoc(subRef(code, 'photos', id), { data: photo.full, createdBy: me(), v });
         data.thumb = photo.thumb;
         data.photoV = v;
       } else if (photo === false) {
@@ -212,6 +275,7 @@ export async function createFirebaseBackend(config, { useEmulator = false } = {}
 
     // ---------------- votos ----------------
     async submitVote(code, ranking, name) {
+      const uid = me();
       const b = writeBatch(db);
       b.set(subRef(code, 'votes', uid), { ranking, name: name || '', at: serverTimestamp() });
       b.set(subRef(code, 'players', uid), { votedAt: serverTimestamp() }, { merge: true });
@@ -219,7 +283,7 @@ export async function createFirebaseBackend(config, { useEmulator = false } = {}
     },
 
     async getMyVote(code) {
-      const s = await getDoc(subRef(code, 'votes', uid));
+      const s = await getDoc(subRef(code, 'votes', me()));
       return s.exists() ? plain(s) : null;
     },
 

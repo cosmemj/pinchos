@@ -44,7 +44,8 @@ export function RoomRoute({ code }) {
       backend.watchDishes(code, setDishes, onErr),
     ];
     return () => unsubs.forEach((u) => u());
-  }, [code, attempt]);
+    // uid: si la sesión cambia, Firestore corta las escuchas abiertas; nos volvemos a suscribir con la nueva.
+  }, [code, attempt, uid]);
 
   const sortedDishes = useMemo(
     () => (dishes
