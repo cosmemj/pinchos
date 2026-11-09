@@ -41,7 +41,8 @@
 
 /* ---------- base ---------- */
 *, *::before, *::after { box-sizing: border-box; }
-html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; background: var(--bg); }
+/* touch-action: sin zoom por doble toque (en iOS hacía zoom solo al tocar rápido la gala o el sello de voto); el pellizco sigue funcionando */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; background: var(--bg); touch-action: manipulation; }
 body {
   margin: 0;
   min-height: 100vh;
@@ -67,6 +68,13 @@ h1, h2, h3 { line-height: 1.15; }
 html.has-sheet, html.has-sheet body,
 html.has-camera, html.has-camera body,
 html.has-reveal, html.has-reveal body { overflow: hidden; }
+
+/* Pilas de una columna: un contenido largo (p. ej. un botón) nunca puede ensancharlas más que la pantalla.
+   Antes, en móviles estrechos, la página se hacía más ancha que la pantalla y el navegador alejaba el zoom. */
+.tab, .home-actions, .code-entry, .form-card, .recent-list, .how-steps, .sticky-cta, .settings-form,
+.detail, .dish-form, .photo-zone, .vote-actions, .summary-list, .ranking-list, .sortable, .player-list,
+.progress-card, .rules-card, .host-card, .host-panel, .host-main-action, .host-secondary, .menu-list,
+.profile-edit, .share-actions, .results-actions, .reveal-end { grid-template-columns: minmax(0, 1fr); }
 
 /* ---------- fondo ---------- */
 .bg {
@@ -127,8 +135,8 @@ html.has-reveal, html.has-reveal body { overflow: hidden; }
 /* ---------- botones ---------- */
 .btn {
   position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-  min-height: 46px; padding: 0 18px; border-radius: 999px; border: 0;
-  font-weight: 700; font-size: 15.5px; letter-spacing: 0.01em; line-height: 1.1; text-decoration: none; white-space: nowrap;
+  min-height: 46px; max-width: 100%; padding: 0 18px; border-radius: 999px; border: 0;
+  font-weight: 700; font-size: 15.5px; letter-spacing: 0.01em; line-height: 1.1; text-align: center; text-decoration: none; white-space: nowrap;
   transition: transform 0.12s ease, box-shadow 0.2s, background 0.2s, opacity 0.2s, color 0.2s;
 }
 .btn:active:not(:disabled) { transform: scale(0.96); }
@@ -137,10 +145,12 @@ html.has-reveal, html.has-reveal body { overflow: hidden; }
   color: #fff; background: linear-gradient(135deg, #ff2e9a 0%, #b23bff 100%);
   box-shadow: 0 6px 22px rgba(255, 46, 154, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.28);
 }
+/* Destello: se mueve con transform (lo anima la GPU) en vez de repintar el fondo en cada fotograma */
+.btn-primary.btn-lg { overflow: hidden; }
 .btn-primary.btn-lg::after {
-  content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
-  background: linear-gradient(110deg, transparent 35%, rgba(255, 255, 255, 0.32) 48%, transparent 60%);
-  background-size: 260% 100%; animation: shine 4s ease-in-out infinite;
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(110deg, transparent 32%, rgba(255, 255, 255, 0.32) 50%, transparent 68%);
+  transform: translateX(-100%); animation: shine 4s ease-in-out infinite;
 }
 .btn-primary:disabled::after { display: none; }
 .btn-secondary { color: var(--text); background: rgba(25, 230, 255, 0.07); box-shadow: inset 0 0 0 1.5px rgba(25, 230, 255, 0.55), 0 0 16px rgba(25, 230, 255, 0.14); }
@@ -149,7 +159,9 @@ html.has-reveal, html.has-reveal body { overflow: hidden; }
 .btn-danger-ghost { color: #ff8da1; background: rgba(255, 77, 109, 0.08); box-shadow: inset 0 0 0 1px rgba(255, 77, 109, 0.4); }
 .btn-whatsapp { color: #04230f; background: linear-gradient(135deg, #5dffa0, #25d366); box-shadow: 0 6px 22px rgba(37, 211, 102, 0.35); }
 .btn-lg { min-height: 56px; font-size: 17px; padding: 0 24px; }
-.btn-block { display: flex; width: 100%; }
+/* Los botones a todo el ancho pueden partir el texto en dos líneas en vez de desbordar la pantalla */
+.btn-block { display: flex; width: 100%; white-space: normal; text-wrap: balance; padding-top: 8px; padding-bottom: 8px; }
+.btn-label { min-width: 0; }
 .btn-icon { font-size: 1.15em; line-height: 1; }
 @media (hover: hover) {
   .btn-primary:not(:disabled):hover { box-shadow: 0 8px 30px rgba(255, 46, 154, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.3); }
@@ -294,7 +306,8 @@ html.has-reveal, html.has-reveal body { overflow: hidden; }
 .tag { display: inline-block; padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 800; background: rgba(255, 46, 154, 0.16); color: var(--pink-2); vertical-align: middle; }
 
 /* ---------- HOME ---------- */
-.home { isolation: isolate; display: flex; flex-direction: column; gap: 26px; min-height: 100vh; min-height: 100dvh; padding-top: calc(var(--safe-t) + 38px); overflow: hidden; }
+/* overflow: clip (y no hidden): así el foco del campo de código nunca puede desplazar la portada hacia un lado */
+.home { isolation: isolate; display: flex; flex-direction: column; gap: 26px; min-height: 100vh; min-height: 100dvh; padding-top: calc(var(--safe-t) + 38px); overflow: hidden; overflow: clip; }
 .home-floaters { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: -1; }
 .home-floaters span {
   position: absolute; left: var(--x); bottom: -50px; font-size: 24px; opacity: 0;
@@ -317,10 +330,12 @@ html.has-reveal, html.has-reveal body { overflow: hidden; }
 .code-entry.shake { animation: shake 0.45s ease; }
 .code-entry-label { font-size: 13px; font-weight: 700; color: var(--muted); text-align: center; }
 .code-entry-row { display: flex; gap: 10px; }
+/* width: 100% + min-width: 0 → el campo se adapta al hueco. Sin esto imponía su ancho "de ordenador" (~440 px)
+   y el botón → quedaba fuera de la pantalla en el móvil. */
 .code-input {
-  flex: 1; min-width: 0; height: 60px; padding: 0 0 0 0.3em; border-radius: 16px; border: 1.5px solid var(--line-2);
+  flex: 1; width: 100%; min-width: 0; height: 60px; padding: 0 0 0 0.3em; border-radius: 16px; border: 1.5px solid var(--line-2);
   background: rgba(0, 0, 0, 0.42); color: var(--cyan); text-align: center; text-transform: uppercase;
-  font-family: var(--font); font-size: 30px; font-weight: 800; letter-spacing: 0.3em; text-shadow: 0 0 12px rgba(25, 230, 255, 0.6);
+  font-family: var(--font); font-size: clamp(24px, 8vw, 30px); font-weight: 800; letter-spacing: 0.3em; text-shadow: 0 0 12px rgba(25, 230, 255, 0.6);
 }
 .code-input:focus { outline: none; border-color: var(--cyan); box-shadow: 0 0 0 4px rgba(25, 230, 255, 0.15); }
 .code-input::placeholder { color: rgba(255, 255, 255, 0.13); text-shadow: none; }
@@ -365,7 +380,7 @@ html.has-reveal, html.has-reveal body { overflow: hidden; }
 .room-top { gap: 8px; }
 .room-title { flex: 1; min-width: 0; display: grid; text-align: center; }
 .room-name { font-family: var(--font-neon); font-size: 21px; line-height: 1.2; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 0 10px rgba(255, 46, 154, 0.75); }
-.room-sub { font-size: 12px; color: var(--muted); }
+.room-sub { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .code-pill {
   flex: none; display: inline-flex; align-items: center; gap: 6px; height: 38px; padding: 0 12px; border-radius: 999px; border: 0;
   background: rgba(25, 230, 255, 0.09); color: var(--cyan); font-weight: 800; font-size: 14px; letter-spacing: 0.1em;
@@ -586,14 +601,15 @@ html.has-reveal, html.has-reveal body { overflow: hidden; }
 .order-pts { flex: none; padding: 4px 9px; border-radius: 999px; font-weight: 800; font-size: 13px; color: var(--yellow); background: rgba(255, 225, 77, 0.1); }
 .vote-actions { display: grid; gap: 8px; margin-top: 4px; }
 .vote-actions-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
-.stamp-overlay { position: fixed; inset: 0; z-index: 450; display: grid; place-items: center; background: radial-gradient(circle, rgba(182, 255, 59, 0.16), rgba(3, 2, 10, 0.85) 70%); animation: fade-in 0.2s both; }
+/* overflow: hidden + sello que cabe girado: antes se salía de la pantalla y en algunos móviles la página hacía zoom */
+.stamp-overlay { position: fixed; inset: 0; z-index: 450; display: grid; grid-template-columns: minmax(0, 1fr); place-items: center; overflow: hidden; padding: 24px; background: radial-gradient(circle, rgba(182, 255, 59, 0.16), rgba(3, 2, 10, 0.85) 70%); animation: fade-in 0.2s both; }
 .stamp {
-  display: grid; justify-items: center; gap: 2px; padding: 16px 30px; border-radius: 22px; border: 5px solid var(--lime); background: rgba(7, 6, 15, 0.6);
-  color: var(--lime); font-weight: 900; font-size: clamp(46px, 15vw, 76px); line-height: 1; text-transform: uppercase; letter-spacing: 0.03em;
+  display: grid; justify-items: center; gap: 2px; max-width: 100%; padding: 14px 24px; border-radius: 22px; border: 5px solid var(--lime); background: rgba(7, 6, 15, 0.6);
+  color: var(--lime); font-weight: 900; font-size: clamp(36px, 12vw, 72px); line-height: 1; text-transform: uppercase; letter-spacing: 0.03em;
   text-shadow: 0 0 18px rgba(182, 255, 59, 0.8); box-shadow: 0 0 30px rgba(182, 255, 59, 0.6), inset 0 0 26px rgba(182, 255, 59, 0.35);
   animation: stamp-in 0.5s cubic-bezier(0.2, 1.6, 0.4, 1) both;
 }
-.stamp small { font-size: 18px; letter-spacing: 0.12em; font-weight: 800; }
+.stamp small { max-width: 100%; font-size: 18px; letter-spacing: 0.12em; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .vote-waiting { padding-top: 6px; }
 .waiting-art { position: relative; justify-self: center; width: 124px; height: 124px; display: grid; place-items: center; margin-top: 8px; border-radius: 50%; background: radial-gradient(circle, rgba(255, 46, 154, 0.22), transparent 70%); }
 .waiting-main { font-size: 70px; animation: float 3s ease-in-out infinite; }
@@ -682,10 +698,10 @@ html.has-reveal, html.has-reveal body { overflow: hidden; }
 .qr-loading { background: #eee; border-radius: 8px; }
 .share-link { max-width: 100%; padding: 8px 12px; border: 0; border-radius: 10px; background: rgba(255, 255, 255, 0.06); color: var(--muted); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .share-actions { width: 100%; display: grid; gap: 10px; }
-.share-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.share-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 
 /* ---------- RESULTADOS ---------- */
-.results-hero { display: grid; justify-items: center; gap: 6px; }
+.results-hero { display: grid; justify-items: center; gap: 6px; text-align: center; }
 .results-trophy { font-size: 64px; filter: drop-shadow(0 0 22px rgba(255, 211, 78, 0.7)); animation: float 3s ease-in-out infinite; }
 .neon-sub { font-family: var(--font-neon); font-weight: 400; font-size: 34px; color: #fff7d1; text-shadow: 0 0 6px #fff, 0 0 18px var(--gold), 0 0 40px var(--orange); }
 .podium { display: grid; grid-template-columns: 1fr 1.22fr 1fr; align-items: end; gap: 8px; margin-top: 18px; }
@@ -713,7 +729,8 @@ html.has-reveal, html.has-reveal body { overflow: hidden; }
 .podium-pts { font-weight: 900; font-size: 18px; }
 .podium-pts small { font-size: 12px; font-weight: 600; color: var(--muted); }
 .results-actions { display: grid; gap: 10px; }
-.results-actions-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.results-actions-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.results-actions-row .btn, .share-row .btn { min-width: 0; padding: 0 12px; white-space: normal; }
 .ranking-list { list-style: none; margin: -6px 0 0; padding: 0; display: grid; gap: 8px; }
 .rank-row {
   position: relative; display: flex; align-items: center; gap: 12px; padding: 10px 14px 15px 10px; overflow: hidden;
@@ -786,7 +803,7 @@ html.has-reveal .toasts { display: none; }
 .empty-title { font-size: 20px; font-weight: 800; }
 .empty-text { max-width: 34ch; color: var(--muted); }
 .empty-text.small { font-size: 13.5px; }
-.empty .btn { margin-top: 6px; }
+.empty .btn { margin-top: 6px; white-space: normal; } /* "Añadir el primer pincho" puede partirse en pantallas de 320 px */
 .offline-bar { position: fixed; z-index: 480; top: 0; left: 0; right: 0; padding: calc(var(--safe-t) + 6px) 12px 6px; text-align: center; font-size: 13px; font-weight: 700; color: #ffd1dc; background: #5a1028; }
 .fx-canvas { position: fixed; inset: 0; z-index: 600; width: 100%; height: 100%; pointer-events: none; }
 .fx-canvas.is-nested { z-index: 3; } /* dentro de la gala: por encima del escenario, debajo de los botones finales */
@@ -832,22 +849,30 @@ html.has-reveal .toasts { display: none; }
 .reveal {
   position: fixed; inset: 0; z-index: 400; display: flex; flex-direction: column; overflow: hidden; color: #fff;
   background: radial-gradient(120% 70% at 50% 0%, #2c1050 0%, #0b0618 55%, #030208 100%);
-  animation: fade-in 0.4s both; -webkit-user-select: none; user-select: none; cursor: pointer;
+  animation: fade-in 0.4s both; -webkit-user-select: none; user-select: none; cursor: pointer; touch-action: manipulation;
+  will-change: opacity; /* capa propia desde el principio: el fundido de salida no obliga a repintar la gala */
 }
+/* Salida con fundido que arranca despacio: el navegador tiene tiempo de pintar la página de debajo antes de que
+   se vea (si no, aparecía a trozos: fondo, botón vacío, fotos…). Sigue bloqueando toques mientras dura. */
+.reveal.is-leaving { animation: fade-out 0.34s cubic-bezier(0.5, 0, 0.75, 0) 0.06s forwards; cursor: default; }
 .reveal-bg { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
-.beam { position: absolute; top: -12%; width: 36vmax; height: 135vh; transform-origin: 50% 0; clip-path: polygon(46% 0, 54% 0, 100% 100%, 0 100%); mix-blend-mode: screen; opacity: 0.6; }
+/* Sin mix-blend-mode: sobre el fondo oscuro se ve igual y el móvil no tiene que mezclar capas en cada fotograma */
+.beam { position: absolute; top: -12%; width: 36vmax; height: 135vh; transform-origin: 50% 0; clip-path: polygon(46% 0, 54% 0, 100% 100%, 0 100%); opacity: 0.6; }
 .beam-1 { left: -4%; background: linear-gradient(180deg, rgba(255, 46, 154, 0.42), transparent 82%); animation: sweep-a 6s ease-in-out infinite alternate; }
 .beam-2 { left: 50%; margin-left: -18vmax; background: linear-gradient(180deg, rgba(255, 255, 255, 0.26), transparent 82%); animation: sweep-b 7s ease-in-out infinite alternate; }
 .beam-3 { right: -4%; background: linear-gradient(180deg, rgba(25, 230, 255, 0.38), transparent 82%); animation: sweep-c 6.5s ease-in-out infinite alternate; }
 .reveal-floor { position: absolute; left: -20%; right: -20%; bottom: -6%; height: 42%; background: radial-gradient(ellipse at 50% 0%, rgba(139, 92, 255, 0.38), transparent 65%); }
+/* Mismo aspecto que antes (los rayos se desvanecen a ~66vmax del centro) con una capa ~45 % más pequeña:
+   la de 180vmax era enorme para la GPU del móvil y al girar podía parpadear o dar tirones. */
 .sunburst {
-  position: absolute; top: 42%; left: 50%; width: 180vmax; height: 180vmax; margin: -90vmax 0 0 -90vmax; border-radius: 50%;
+  position: absolute; top: 42%; left: 50%; width: 134vmax; height: 134vmax; margin: -67vmax 0 0 -67vmax; border-radius: 50%;
   background: repeating-conic-gradient(from 0deg, rgba(255, 211, 78, 0.17) 0deg 7deg, transparent 7deg 18deg);
-  -webkit-mask-image: radial-gradient(circle, #000 0%, transparent 52%); mask-image: radial-gradient(circle, #000 0%, transparent 52%);
+  -webkit-mask-image: radial-gradient(closest-side, #000 0%, transparent 99%); mask-image: radial-gradient(closest-side, #000 0%, transparent 99%);
   animation: spin 40s linear infinite, fade-in 1.2s both;
 }
 .pulse-ring { position: absolute; top: 46%; left: 50%; width: 64vmin; height: 64vmin; margin: -32vmin 0 0 -32vmin; border-radius: 50%; border: 3px solid rgba(255, 211, 78, 0.65); box-shadow: 0 0 40px rgba(255, 211, 78, 0.5); animation: ring 1s ease-out infinite; }
-.stage-suspense .reveal-bg { animation: dim-pulse 0.5s ease-in-out infinite alternate; }
+/* Pulso de oscuridad del suspense con una capa negra que cambia de opacidad (antes: filter sobre todo el fondo) */
+.stage-suspense .reveal-bg::after { content: ''; position: absolute; inset: 0; background: #000; opacity: 0; animation: dim-pulse 0.5s ease-in-out infinite alternate; }
 .reveal-top { position: relative; z-index: 3; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: calc(var(--safe-t) + 10px) 12px 4px; cursor: default; }
 .reveal-brand { min-width: 0; font-weight: 700; font-size: 14px; color: rgba(255, 255, 255, 0.78); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .reveal-controls { flex: none; display: flex; align-items: center; gap: 8px; }
@@ -869,7 +894,9 @@ html.has-reveal .toasts { display: none; }
 .rank-o { font-size: clamp(26px, 8vw, 46px); font-size: clamp(26px, min(9vw, 6dvh), 50px); margin-top: 0.3em; }
 .reveal-tie { font-weight: 900; letter-spacing: 0.2em; text-transform: uppercase; color: var(--yellow); text-shadow: 0 0 14px var(--yellow); animation: pop-in 0.4s 0.4s backwards; }
 .reveal-cards { display: flex; justify-content: center; gap: 12px; width: 100%; }
-.reveal-card { display: grid; justify-items: center; gap: 4px; width: min(60vw, 280px); width: min(60vw, 280px, 30dvh); text-align: center; animation: card-in 0.8s cubic-bezier(0.2, 1.2, 0.3, 1) both; animation-delay: var(--d); }
+/* minmax(0, 1fr): la foto respeta el ancho de la tarjeta aunque el nombre sea más largo (antes un nombre largo
+   agrandaba la foto y el ganador se salía por abajo en móviles pequeños). El nombre puede sobresalir, centrado. */
+.reveal-card { display: grid; grid-template-columns: minmax(0, 1fr); justify-items: center; gap: 4px; width: min(60vw, 280px); width: min(60vw, 280px, 30dvh); text-align: center; animation: card-in 0.8s cubic-bezier(0.2, 1.2, 0.3, 1) both; animation-delay: var(--d); }
 .reveal-cards.is-multi .reveal-card { width: min(42vw, 210px); width: min(42vw, 210px, 26dvh); }
 .reveal-photo { width: 100%; border-radius: 22px; overflow: hidden; box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.85), 0 0 30px rgba(25, 230, 255, 0.6), 0 20px 50px rgba(0, 0, 0, 0.6); }
 .reveal-photo .dish-img::after { display: none; }
@@ -879,7 +906,16 @@ html.has-reveal .toasts { display: none; }
 .reveal-points { font-size: 26px; font-weight: 900; color: var(--yellow); text-shadow: 0 0 12px rgba(255, 225, 77, 0.7); }
 .reveal-points small { font-size: 14px; }
 .reveal-suspense { display: grid; justify-items: center; gap: 26px; text-align: center; }
-.mystery-card { width: min(46vw, 200px, 28dvh); aspect-ratio: 4 / 5; display: grid; place-items: center; border-radius: 22px; background: linear-gradient(160deg, #2c1e5a, #120c28); animation: shake-hard 0.45s ease-in-out infinite, glow-gold 0.9s ease-in-out infinite alternate; }
+.mystery-card {
+  position: relative; width: min(46vw, 200px, 28dvh); aspect-ratio: 4 / 5; display: grid; place-items: center; border-radius: 22px;
+  background: linear-gradient(160deg, #2c1e5a, #120c28); box-shadow: 0 0 0 3px rgba(255, 211, 78, 0.55), 0 0 20px rgba(255, 211, 78, 0.35);
+  animation: shake-hard 0.45s ease-in-out infinite;
+}
+/* El brillo late cambiando la opacidad de una capa (no se repinta la sombra en cada fotograma) */
+.mystery-card::after {
+  content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; opacity: 0;
+  box-shadow: 0 0 0 3px rgba(255, 211, 78, 1), 0 0 64px rgba(255, 211, 78, 0.85); animation: glow-gold 0.9s ease-in-out infinite alternate;
+}
 .mystery-card span { font-family: var(--font-sign); font-size: 90px; color: var(--gold); text-shadow: 0 0 20px var(--gold); }
 .reveal-winner { display: grid; justify-items: center; gap: 2px; text-align: center; animation: flash-in 0.9s ease both; }
 .winner-label { font-family: var(--font-sign); font-size: clamp(22px, 6.6vw, 40px); line-height: 1.15; word-spacing: 0.3em; color: #fff6d8; text-shadow: 0 0 6px #fff, 0 0 16px var(--gold), 0 0 40px var(--orange); animation: zoom-in 0.8s cubic-bezier(0.2, 1.5, 0.4, 1) both; }
@@ -890,8 +926,9 @@ html.has-reveal .toasts { display: none; }
 .reveal-winner.is-end .reveal-cards.is-multi .reveal-card { width: min(38vw, 180px, 20dvh); }
 .winner-label.is-double { font-size: clamp(17px, 5.1vw, 34px); }
 .reveal-winner .reveal-cards.is-multi .reveal-card { width: min(40vw, 200px); width: min(40vw, 200px, 22dvh); }
-@media (max-height: 799px) {
-  /* En móviles bajitos el ganador manda: la lista de puestos se ve luego en "clasificación completa" */
+@media (max-height: 899px) {
+  /* El ganador manda: hasta ~900 px de alto no cabe con la lista debajo (se pisaban "¡Enhorabuena!" y el 2º).
+     La lista de puestos se ve luego en "clasificación completa". */
   .stage-winner .reveal-board, .stage-end .reveal-board { display: none; }
 }
 .winner-congrats { margin-top: 4px; font-weight: 800; font-size: 17px; color: var(--lime); text-shadow: 0 0 14px rgba(182, 255, 59, 0.6); animation: pop-in 0.5s backwards; }
@@ -930,7 +967,7 @@ html.has-reveal .toasts { display: none; }
 @keyframes pulse-soft { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
 @keyframes pulse-border { 0%, 100% { box-shadow: 0 0 6px rgba(255, 46, 154, 0.35); } 50% { box-shadow: 0 0 18px rgba(255, 46, 154, 0.85); } }
 @keyframes glow-pulse { 0%, 100% { box-shadow: 0 0 0 rgba(255, 46, 154, 0); } 50% { box-shadow: 0 0 26px rgba(255, 46, 154, 0.32); } }
-@keyframes shine { 0% { background-position: 130% 0; } 60%, 100% { background-position: -130% 0; } }
+@keyframes shine { 0% { transform: translateX(-100%); } 60%, 100% { transform: translateX(100%); } }
 @keyframes sheet-up { from { transform: translateY(100%); } }
 @keyframes sheet-down { to { transform: translateY(100%); } }
 @keyframes toast-in { from { opacity: 0; transform: translateY(-20px) scale(0.9); } }
@@ -946,9 +983,9 @@ html.has-reveal .toasts { display: none; }
 @keyframes crown-bob { 0%, 100% { transform: translateX(-50%) rotate(-8deg); } 50% { transform: translateX(-50%) translateY(-4px) rotate(6deg); } }
 @keyframes count-pop { 0% { opacity: 0; transform: scale(2); } 30% { opacity: 1; transform: scale(1); } 100% { opacity: 0; transform: scale(0.7); } }
 @keyframes flash { from { opacity: 0.95; } to { opacity: 0; } }
-@keyframes glow-gold { from { box-shadow: 0 0 0 3px rgba(255, 211, 78, 0.55), 0 0 20px rgba(255, 211, 78, 0.35); } to { box-shadow: 0 0 0 3px rgba(255, 211, 78, 1), 0 0 64px rgba(255, 211, 78, 0.85); } }
+@keyframes glow-gold { from { opacity: 0; } to { opacity: 1; } }
 @keyframes ring { from { transform: scale(0.4); opacity: 1; } to { transform: scale(1.7); opacity: 0; } }
-@keyframes dim-pulse { from { filter: brightness(1); } to { filter: brightness(0.55); } }
+@keyframes dim-pulse { from { opacity: 0; } to { opacity: 0.45; } }
 @keyframes sweep-a { from { transform: rotate(-30deg); } to { transform: rotate(16deg); } }
 @keyframes sweep-b { from { transform: rotate(14deg); } to { transform: rotate(-14deg); } }
 @keyframes sweep-c { from { transform: rotate(28deg); } to { transform: rotate(-16deg); } }

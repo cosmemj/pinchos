@@ -107,7 +107,7 @@ function JoinScreen({ code, room, players, dishes }) {
       saveProfile(p);
       await backend.joinRoom(code, p);
       sound.play('success');
-      burst({ y: innerHeight * 0.7, count: 80, speed: 12 });
+      burst({ fy: 0.7, count: 80, speed: 12 });
       toast(`¡Bienvenido, ${p.name}!`, { icon: avatar });
     } catch (err) {
       toastError(friendlyError(err));
@@ -289,7 +289,15 @@ function RoomView({ code, room, players, dishes, me }) {
       return null;
     }
   });
-  const [reveal, setReveal] = useState(false);
+  // 0 = gala cerrada; cualquier otro número identifica cada pase (cambia la key → la gala empieza de cero,
+  // también si ya estaba abierta y el anfitrión la repite para todos).
+  const [reveal, setReveal] = useState(0);
+  const revealRuns = useRef(0);
+  const revealClosedAt = useRef(0);
+  const openReveal = () => {
+    revealRuns.current += 1;
+    setReveal(revealRuns.current);
+  };
   const ctx = { backend, code, room, players, dishes, me, uid, isHost, isOwner };
   const hostActions = useHostActions(ctx);
 
@@ -335,7 +343,7 @@ function RoomView({ code, room, players, dishes, me }) {
     if (seq > seen) {
       local.set(key, seq);
       const recent = !room.revealAt || Date.now() - room.revealAt < 15 * 60 * 1000;
-      if (recent) setReveal(true);
+      if (recent) openReveal();
     }
   }, [room.revealSeq, room.phase, !!room.results]);
 
@@ -358,8 +366,15 @@ function RoomView({ code, room, players, dishes, me }) {
   let content;
   if (tab === 'dishes') content = html`<${DishesTab} ctx=${ctx} />`;
   else if (tab === 'people') content = html`<${PeopleTab} ctx=${ctx} hostActions=${hostActions} onShare=${() => setShare('normal')} />`;
-  else if (results) content = html`<${ResultsTab} ctx=${ctx} hostActions=${hostActions} onReplay=${() => { sound.unlock(); setReveal(true); }} />`;
-  else content = html`<${VoteTab} ctx=${ctx} hostActions=${hostActions} />`;
+  else if (results) {
+    const replay = () => {
+      // Un segundo toque justo al cerrar la gala no debe volver a abrirla.
+      if (Date.now() - revealClosedAt.current < 700) return;
+      sound.unlock();
+      openReveal();
+    };
+    content = html`<${ResultsTab} ctx=${ctx} hostActions=${hostActions} onReplay=${replay} />`;
+  } else content = html`<${VoteTab} ctx=${ctx} hostActions=${hostActions} />`;
 
   return html`
     <div class=${cx('view room', `phase-${room.phase}`)}>
@@ -405,6 +420,10 @@ function RoomView({ code, room, players, dishes, me }) {
       </nav>
 
       <${ShareSheet} open=${!!share} fresh=${share === 'fresh'} onClose=${() => setShare(null)} room=${room} code=${code} />
-      ${reveal && room.results ? html`<${Reveal} ctx=${ctx} onClose=${() => { setReveal(false); setTab('vote'); window.scrollTo(0, 0); }} />` : null}
+      ${reveal && room.results
+        ? html`<${Reveal} key=${reveal} ctx=${ctx}
+            onLeave=${() => { setTab('vote'); window.scrollTo(0, 0); }}
+            onClose=${() => { revealClosedAt.current = Date.now(); setReveal(0); }} />`
+        : null}
     </div>`;
 }

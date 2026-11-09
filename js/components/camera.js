@@ -150,7 +150,7 @@ function CameraOverlay({ title, hint, onDone }) {
     await sleep(30);
     const set = makePhotoSet(shot.canvas);
     sound.play('success');
-    burst({ y: innerHeight * 0.75, count: 40, speed: 9 });
+    burst({ fy: 0.75, count: 40, speed: 9 });
     close(set);
   }
 

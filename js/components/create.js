@@ -32,7 +32,7 @@ export function CreateRoom() {
       const code = await backend.createRoom({ name: name.trim().slice(0, 50), settings, player });
       rememberRoom({ code, name: name.trim(), phase: 'lobby', host: true });
       sound.play('success');
-      burst({ y: innerHeight * 0.8, count: 90, speed: 13 });
+      burst({ fy: 0.8, count: 90, speed: 13 });
       try {
         sessionStorage.setItem(`pdo:fresh:${code}`, '1');
       } catch {

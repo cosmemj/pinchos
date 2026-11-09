@@ -3,6 +3,7 @@ import { useState, useEffect } from './lib.js';
 import { appState } from './store.js';
 
 const cache = new Map(); // clave -> Promise<string|null>
+const ready = new Map(); // clave -> foto ya descargada (se pinta al instante, sin parpadeo miniatura → foto)
 const keyOf = (code, id, v) => `${code}/${id}/${v || 0}`;
 
 export function getPhoto(code, dish) {
@@ -13,7 +14,8 @@ export function getPhoto(code, dish) {
     const p = backend
       .getPhoto(code, dish.id)
       .then((src) => {
-        if (!src) cache.delete(key); // aún no sincronizada: reintentar más tarde
+        if (src) ready.set(key, src);
+        else cache.delete(key); // aún no sincronizada: reintentar más tarde
         return src;
       })
       .catch(() => {
@@ -26,16 +28,25 @@ export function getPhoto(code, dish) {
 }
 
 export function primePhoto(code, id, v, src) {
-  if (v && src) cache.set(keyOf(code, id, v), Promise.resolve(src));
+  if (!v || !src) return;
+  const key = keyOf(code, id, v);
+  cache.set(key, Promise.resolve(src));
+  ready.set(key, src);
+}
+
+function photoState(code, dish) {
+  const src = dish?.photoV ? ready.get(keyOf(code, dish.id, dish.photoV)) : null;
+  return src ? { src, full: true } : { src: dish?.thumb || null, full: false };
 }
 
 /** Foto grande de un pincho; mientras carga devuelve la miniatura. */
 export function usePhoto(code, dish) {
-  const [state, setState] = useState({ src: dish?.thumb || null, full: false });
+  const [state, setState] = useState(() => photoState(code, dish));
   useEffect(() => {
     let alive = true;
-    setState({ src: dish?.thumb || null, full: false });
-    if (dish?.photoV) {
+    const now = photoState(code, dish);
+    setState((s) => (s.src === now.src && s.full === now.full ? s : now));
+    if (dish?.photoV && !now.full) {
       getPhoto(code, dish).then((src) => {
         if (alive && src) setState({ src, full: true });
       });

@@ -200,7 +200,7 @@ function VoteBuilder({ ctx, initial, onSubmitted, onCancel }) {
       setStamp(true);
       sound.play('stamp');
       haptic([50, 30, 90]);
-      setTimeout(() => burst({ y: innerHeight * 0.45, count: 120, speed: 14, emojis: ['🗳️', '🍢', '⭐'] }), 180);
+      setTimeout(() => burst({ fy: 0.45, count: 120, speed: 14, emojis: ['🗳️', '🍢', '⭐'] }), 180);
       await sleep(1700);
       setStamp(false);
       onSubmitted(picks);

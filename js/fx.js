@@ -3,11 +3,37 @@ import { local, reducedMotion } from './util.js';
 
 // ======================= CONFETI =======================
 const COLORS = ['#ff2e9a', '#19e6ff', '#b6ff3b', '#ffe14d', '#8b5cff', '#ff8a3d', '#ffffff'];
+const FRAME = 1000 / 60; // la física está pensada a 60 fps; en 120 Hz o en móviles lentos se escala con el tiempo real
 let canvas = null;
 let ctx = null;
 let parts = [];
 let raf = 0;
+let last = 0;
 let dpr = 1;
+let cw = 0; // tamaño lógico (px CSS) del lienzo
+let ch = 0;
+const sprites = new Map(); // emoji + tamaño -> lienzo pre-renderizado (fillText de emojis en cada frame es caro)
+
+/**
+ * Ajusta el lienzo a su propia caja CSS (fixed + inset 0 = el viewport de la página).
+ * No usamos innerWidth/innerHeight: en iOS cambian con el zoom (pellizco o doble toque) y el confeti
+ * se quedaba pintado fuera de la zona que se borraba.
+ */
+function fitCanvas() {
+  if (!canvas) return;
+  const w = canvas.clientWidth || document.documentElement.clientWidth || innerWidth;
+  const h = canvas.clientHeight || document.documentElement.clientHeight || innerHeight;
+  const r = Math.min(2, window.devicePixelRatio || 1);
+  const bw = Math.round(w * r);
+  const bh = Math.round(h * r);
+  if (bw !== canvas.width || bh !== canvas.height) {
+    canvas.width = bw;
+    canvas.height = bh;
+  }
+  cw = w;
+  ch = h;
+  dpr = r;
+}
 
 function ensureCanvas() {
   if (canvas) return;
@@ -16,31 +42,57 @@ function ensureCanvas() {
   canvas.setAttribute('aria-hidden', 'true');
   document.body.appendChild(canvas);
   ctx = canvas.getContext('2d');
-  const resize = () => {
-    dpr = Math.min(2, window.devicePixelRatio || 1);
-    canvas.width = Math.round(innerWidth * dpr);
-    canvas.height = Math.round(innerHeight * dpr);
-  };
-  resize();
-  addEventListener('resize', resize);
+  fitCanvas();
+  addEventListener('resize', fitCanvas);
+  if (typeof ResizeObserver !== 'undefined') new ResizeObserver(fitCanvas).observe(canvas);
+}
+
+function wipe() {
+  if (!ctx) return;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+}
+
+function emojiSprite(e, px) {
+  const key = `${e}|${px}|${dpr}`;
+  let s = sprites.get(key);
+  if (!s) {
+    if (sprites.size > 120) sprites.clear();
+    const side = Math.ceil(px * 1.35 * dpr);
+    s = document.createElement('canvas');
+    s.width = side;
+    s.height = side;
+    const g = s.getContext('2d');
+    g.font = `${px * dpr}px system-ui, "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif`;
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.fillText(e, side / 2, side / 2);
+    sprites.set(key, s);
+  }
+  return s;
 }
 
 /**
  * Explosión de confeti.
+ * x/y en px CSS, o fx/fy como fracción del ancho/alto de la pantalla (por defecto, el centro).
  * angle: dirección en grados (-90 = hacia arriba). spread: apertura en grados.
  */
 export function burst({
-  x = innerWidth / 2, y = innerHeight / 2, count = 70, angle = -90, spread = 360,
+  x, y, fx = 0.5, fy = 0.5, count = 70, angle = -90, spread = 360,
   speed = 10, gravity = 0.28, colors = COLORS, emojis = null, size = 1, ttl = 150,
 } = {}) {
   if (reducedMotion()) count = Math.min(count, 18);
   ensureCanvas();
+  if (!cw || !ch) fitCanvas();
+  const ox = x ?? cw * fx;
+  const oy = y ?? ch * fy;
   for (let i = 0; i < count; i++) {
     const a = ((angle + (Math.random() - 0.5) * spread) * Math.PI) / 180;
     const v = speed * (0.35 + Math.random() * 0.85);
     const isEmoji = emojis && Math.random() < 0.3;
     parts.push({
-      x, y,
+      x: ox,
+      y: oy,
       vx: Math.cos(a) * v,
       vy: Math.sin(a) * v,
       g: gravity,
@@ -56,31 +108,36 @@ export function burst({
     });
   }
   if (parts.length > 900) parts.splice(0, parts.length - 900);
-  if (!raf) raf = requestAnimationFrame(tick);
+  if (!raf) {
+    last = 0;
+    raf = requestAnimationFrame(tick);
+  }
 }
 
-function tick() {
-  const w = innerWidth;
-  const h = innerHeight;
+function tick(now) {
+  const k = last ? Math.min(3, Math.max(0.25, (now - last) / FRAME)) : 1;
+  last = now;
+  const drag = 0.986 ** k;
+  wipe(); // siempre el lienzo entero, pase lo que pase con el viewport
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.clearRect(0, 0, w, h);
-  parts = parts.filter((p) => p.life < p.ttl && p.y < h + 60);
+  parts = parts.filter((p) => p.life < p.ttl && p.y < ch + 60);
   for (const p of parts) {
-    p.life++;
-    p.vx *= 0.986;
-    p.vy = p.vy * 0.986 + p.g;
-    p.x += p.vx + Math.sin((p.life + p.wob) * 0.12) * 0.6;
-    p.y += p.vy;
-    p.rot += p.vr;
+    p.life += k;
+    p.vx *= drag;
+    p.vy = p.vy * drag + p.g * k;
+    p.x += (p.vx + Math.sin((p.life + p.wob) * 0.12) * 0.6) * k;
+    p.y += p.vy * k;
+    p.rot += p.vr * k;
+    if (p.x < -80 || p.x > cw + 80) continue; // fuera de pantalla: no se pinta (sigue vivo por si vuelve)
     ctx.globalAlpha = Math.max(0, Math.min(1, (p.ttl - p.life) / 35));
     ctx.save();
     ctx.translate(p.x, p.y);
     ctx.rotate(p.rot);
     if (p.shape === 'emoji') {
-      ctx.font = `${p.s * 2.4}px system-ui, "Apple Color Emoji", "Segoe UI Emoji", sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(p.e, 0, 0);
+      const px = Math.round(p.s * 2.4);
+      const sp = emojiSprite(p.e, px);
+      const side = sp.width / dpr;
+      ctx.drawImage(sp, -side / 2, -side / 2, side, side);
     } else {
       ctx.fillStyle = p.c;
       if (p.shape === 'rect') {
@@ -97,37 +154,44 @@ function tick() {
   ctx.globalAlpha = 1;
   if (parts.length) raf = requestAnimationFrame(tick);
   else {
-    ctx.clearRect(0, 0, w, h);
+    wipe();
     raf = 0;
+    last = 0;
   }
 }
 
 /** Cañones de confeti desde las esquinas inferiores. */
 export function cannons({ emojis = null, count = 90 } = {}) {
-  burst({ x: -10, y: innerHeight + 10, angle: -62, spread: 34, speed: 24, count, emojis, gravity: 0.32 });
-  burst({ x: innerWidth + 10, y: innerHeight + 10, angle: -118, spread: 34, speed: 24, count, emojis, gravity: 0.32 });
+  ensureCanvas();
+  burst({ x: -10, y: ch + 10, angle: -62, spread: 34, speed: 24, count, emojis, gravity: 0.32 });
+  burst({ x: cw + 10, y: ch + 10, angle: -118, spread: 34, speed: 24, count, emojis, gravity: 0.32 });
 }
 
 /** Fuegos artificiales durante `ms` milisegundos. Devuelve función para pararlos. */
 export function fireworks(ms = 3000) {
   let stopped = false;
+  let timer = 0;
   const end = Date.now() + ms;
   const shoot = () => {
     if (stopped || Date.now() > end) return;
     const palette = [COLORS[(Math.random() * 5) | 0], '#ffffff', '#ffe14d'];
     burst({
-      x: innerWidth * (0.15 + Math.random() * 0.7),
-      y: innerHeight * (0.12 + Math.random() * 0.35),
+      fx: 0.15 + Math.random() * 0.7,
+      fy: 0.12 + Math.random() * 0.35,
       count: 36, speed: 7.5, gravity: 0.12, colors: palette, size: 0.8, ttl: 100,
     });
-    setTimeout(shoot, 280 + Math.random() * 380);
+    timer = setTimeout(shoot, 280 + Math.random() * 380);
   };
   shoot();
-  return () => { stopped = true; };
+  return () => {
+    stopped = true;
+    clearTimeout(timer);
+  };
 }
 
 export function clearConfetti() {
   parts = [];
+  wipe();
 }
 
 /** Coloca el lienzo del confeti dentro de un contenedor (p. ej. la gala) para que no tape sus botones. */
@@ -135,6 +199,7 @@ export function mountConfetti(container = document.body) {
   ensureCanvas();
   if (canvas.parentNode !== container) container.appendChild(canvas);
   canvas.classList.toggle('is-nested', container !== document.body);
+  fitCanvas();
 }
 
 // ======================= SONIDO =======================

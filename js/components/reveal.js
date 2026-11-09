@@ -1,6 +1,6 @@
 // La GALA: revelación animada del Top 5, del último al primero.
-import { html, useState, useEffect, useMemo, useRef } from '../lib.js';
-import { cx, haptic, reducedMotion } from '../util.js';
+import { html, useState, useEffect, useMemo, useCallback, useRef } from '../lib.js';
+import { cx, haptic, joinNames, reducedMotion } from '../util.js';
 import { sound, cannons, fireworks, burst, clearConfetti, mountConfetti } from '../fx.js';
 import { revealGroups } from '../scoring.js';
 import { preloadPhotos } from '../photos.js';
@@ -9,6 +9,14 @@ import { Portal, CountUp, Spinner, DishImage } from './ui.js';
 const T = reducedMotion()
   ? { intro: 1600, pos: 2600, suspense: 1800, winner: 3200 }
   : { intro: 3000, pos: 4300, suspense: 3600, winner: 6000 };
+const LEAVE_MS = reducedMotion() ? 0 : 400; // = retardo + duración de .reveal.is-leaving en el CSS
+
+/** Para un pase de la gala: cancela la espera en curso, los temporizadores, el redoble y los fuegos. */
+function stopRun(c) {
+  c.alive = false;
+  c.cancel?.();
+  c.stops?.forEach((f) => f());
+}
 
 function SoundToggle() {
   const [muted, setMuted] = useState(sound.muted);
@@ -28,7 +36,7 @@ function RevealCard({ entry, src, delay = 0, big = false }) {
     </div>`;
 }
 
-export function Reveal({ ctx, onClose }) {
+export function Reveal({ ctx, onClose, onLeave }) {
   const { room, dishes, code } = ctx;
   const results = room.results;
   const groups = useMemo(() => revealGroups(results), [results]);
@@ -37,9 +45,26 @@ export function Reveal({ ctx, onClose }) {
   const [stage, setStage] = useState({ name: 'loading' });
   const [needsTap, setNeedsTap] = useState(!sound.ready && !sound.muted);
   const [runId, setRunId] = useState(0);
+  const [leaving, setLeaving] = useState(false);
   const ctl = useRef({});
   const rootRef = useRef(null);
+  const mounted = useRef(true);
+  const exit = useRef({ on: false, timer: 0 });
+  const cb = useRef({});
+  cb.current = { onClose, onLeave };
   const last = groups.length - 1;
+
+  // Salida con un fundido corto: sin corte brusco y sin que un segundo toque caiga en la página de debajo
+  // (antes podía pulsar "Ver la gala otra vez" sin querer y la gala se volvía a abrir).
+  const leave = useCallback((e) => {
+    e?.stopPropagation?.();
+    if (exit.current.on) return;
+    exit.current.on = true;
+    stopRun(ctl.current);
+    cb.current.onLeave?.();
+    setLeaving(true);
+    exit.current.timer = setTimeout(() => cb.current.onClose?.(), LEAVE_MS);
+  }, []);
 
   useEffect(() => {
     const c = { alive: true, skip: null, cancel: null, stops: [] };
@@ -59,8 +84,9 @@ export function Reveal({ ctx, onClose }) {
         setStage({ name: 'loading' });
         const entries = groups.flatMap((g) => g.entries);
         const map = await preloadPhotos(code, entries.map((e) => dishMap.get(e.id) || { id: e.id }), 4500);
+        // Aunque se haya pulsado "Saltar" mientras cargaba, el ganador debe salir con su foto.
+        if (mounted.current) setPhotos(map);
         if (!c.alive) return;
-        setPhotos(map);
         if (!groups.length) {
           setStage({ name: 'empty' });
           return;
@@ -74,7 +100,7 @@ export function Reveal({ ctx, onClose }) {
           sound.play('boom');
           haptic(30);
           later(750, () => sound.play('ding'));
-          later(1900, () => burst({ y: innerHeight * 0.42, count: 26, speed: 6, gravity: 0.15, size: 0.8 }));
+          later(1900, () => burst({ fy: 0.42, count: 26, speed: 6, gravity: 0.15, size: 0.8 }));
           await wait(T.pos);
         }
 
@@ -100,27 +126,42 @@ export function Reveal({ ctx, onClose }) {
       }
     })();
 
-    return () => {
-      c.alive = false;
-      c.cancel?.();
-      c.stops.forEach((f) => f());
-    };
+    return () => stopRun(c);
   }, [runId]);
 
   useEffect(() => {
-    document.documentElement.classList.add('has-reveal');
+    const root = document.documentElement;
+    root.classList.add('has-reveal');
     if (rootRef.current) mountConfetti(rootRef.current);
-    // Mantener la pantalla encendida durante la gala (si el navegador lo permite)
+
+    // Mantener la pantalla encendida durante la gala (si el navegador lo permite). El navegador suelta el
+    // bloqueo al cambiar de app, así que lo pedimos de nuevo al volver.
+    // `asking` evita pedir dos bloqueos a la vez (p. ej. al volver a la app antes de que llegue el primero):
+    // el que se quedara sin guardar en `lock` ya no se soltaría al cerrar la gala.
     let lock = null;
-    navigator.wakeLock?.request('screen').then((l) => { lock = l; }).catch(() => {});
+    let asking = false;
+    const askLock = () => {
+      if (!navigator.wakeLock || asking || document.visibilityState !== 'visible' || (lock && !lock.released)) return;
+      asking = true;
+      navigator.wakeLock.request('screen').then((l) => {
+        if (mounted.current) lock = l;
+        else l.release().catch(() => {});
+      }).catch(() => {}).finally(() => { asking = false; });
+    };
+    askLock();
+    document.addEventListener('visibilitychange', askLock);
+
     const onKey = (e) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') leave();
       if (e.key === ' ' || e.key === 'ArrowRight') ctl.current.skip?.();
     };
     addEventListener('keydown', onKey);
     return () => {
+      mounted.current = false;
+      clearTimeout(exit.current.timer);
       removeEventListener('keydown', onKey);
-      document.documentElement.classList.remove('has-reveal');
+      document.removeEventListener('visibilitychange', askLock);
+      root.classList.remove('has-reveal');
       clearConfetti();
       mountConfetti(document.body);
       lock?.release().catch(() => {});
@@ -129,10 +170,8 @@ export function Reveal({ ctx, onClose }) {
 
   const skipToEnd = (e) => {
     e?.stopPropagation();
-    const c = ctl.current;
-    c.alive = false;
-    c.cancel?.();
-    c.stops?.forEach((f) => f());
+    if (exit.current.on) return;
+    stopRun(ctl.current);
     setStage({ name: groups.length ? 'end' : 'empty' });
     if (groups.length && ctl.current.celebrated !== true) {
       ctl.current.celebrated = true;
@@ -142,10 +181,12 @@ export function Reveal({ ctx, onClose }) {
   };
   const replay = (e) => {
     e?.stopPropagation();
+    if (exit.current.on) return;
     clearConfetti();
     setRunId((n) => n + 1);
   };
   const advance = () => {
+    if (exit.current.on) return;
     if (needsTap) {
       // El primer toque solo activa el sonido (no salta el paso actual)
       sound.unlock();
@@ -159,10 +200,11 @@ export function Reveal({ ctx, onClose }) {
   const revealedCount = s === 'pos' ? stage.i : ['suspense', 'winner', 'end'].includes(s) ? last : 0;
   const board = groups.slice(0, revealedCount).reverse();
   const winner = groups[last];
+  const winnerChefs = winner ? [...new Set(winner.entries.map((e) => e.chefName).filter(Boolean))] : [];
 
   return html`
     <${Portal}>
-      <div ref=${rootRef} class=${cx('reveal', `stage-${s}`)} role="dialog" aria-modal="true" aria-label="Gala de resultados" onClick=${advance}>
+      <div ref=${rootRef} class=${cx('reveal', `stage-${s}`, leaving && 'is-leaving')} role="dialog" aria-modal="true" aria-label="Gala de resultados" onClick=${advance}>
         <div class="reveal-bg" aria-hidden="true">
           <div class="beam beam-1"></div><div class="beam beam-2"></div><div class="beam beam-3"></div>
           <div class="reveal-floor"></div>
@@ -177,7 +219,7 @@ export function Reveal({ ctx, onClose }) {
             ${s !== 'end' && s !== 'empty'
               ? html`<button type="button" class="reveal-skip" onClick=${skipToEnd}>Saltar ⏭</button>`
               : null}
-            <button type="button" class="icon-btn icon-btn-glass" aria-label="Cerrar gala" onClick=${(e) => { e.stopPropagation(); onClose(); }}>✕</button>
+            <button type="button" class="icon-btn icon-btn-glass" aria-label="Cerrar gala" onClick=${leave}>✕</button>
           </div>
         </header>
 
@@ -220,7 +262,7 @@ export function Reveal({ ctx, onClose }) {
               <div class=${cx('reveal-cards', winner.entries.length > 1 && 'is-multi')}>
                 ${winner.entries.map((e, k) => html`<${RevealCard} key=${e.id} entry=${e} src=${photos.get(e.id)} delay=${200 + k * 160} big />`)}
               </div>
-              ${s === 'end' ? html`<div class="winner-congrats">¡Enhorabuena${winner.entries[0].chefName ? `, ${winner.entries.map((e) => e.chefName).filter(Boolean).join(' y ')}` : ''}! 🎉</div>` : null}
+              ${s === 'end' ? html`<div class="winner-congrats">¡Enhorabuena${winnerChefs.length ? `, ${joinNames(winnerChefs)}` : ''}! 🎉</div>` : null}
             </div>` : null}
         </main>
 
@@ -237,7 +279,7 @@ export function Reveal({ ctx, onClose }) {
 
         ${s === 'end' || s === 'empty' ? html`
           <div class="reveal-end" onClick=${(e) => e.stopPropagation()}>
-            <button type="button" class="btn btn-primary btn-lg" onClick=${onClose}><span class="btn-label">Ver clasificación completa</span></button>
+            <button type="button" class="btn btn-primary btn-lg btn-block" onClick=${leave}><span class="btn-label">Ver clasificación completa</span></button>
             ${groups.length ? html`<button type="button" class="btn btn-ghost" onClick=${replay}><span class="btn-icon">🔁</span><span class="btn-label">Repetir</span></button>` : null}
           </div>` : null}
 

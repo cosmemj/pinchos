@@ -272,7 +272,7 @@ function DishForm({ ctx, open, onClose, editing: currentEditing }) {
         const res = await backend.addDish(code, { ...data, photo });
         if (photo) primePhoto(code, res.id, res.photoV, photo.full);
         sound.play('success');
-        burst({ y: innerHeight * 0.85, count: 70, speed: 12, emojis: ['🍢', '🍤', '🧀', '🫒'] });
+        burst({ fy: 0.85, count: 70, speed: 12, emojis: ['🍢', '🍤', '🧀', '🫒'] });
         toast(`¡${data.name} entra en el concurso!`, { icon: '🍢' });
       }
       onClose();
